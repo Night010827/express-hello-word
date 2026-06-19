@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chat App</title>
+    <title>Chat App (リアクション制限機能付き)</title>
     <style>
       .chat {
         display: flex;
         flex-direction: column;
-        height: 80vh;
+        height: 100vh;
       }
       .messages {
         flex: 1;
@@ -16,6 +16,38 @@
         list-style: none;
         padding: 0;
         margin: 0;
+      }
+      .messages li {
+        padding: 10px 15px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        flex-direction: column;
+      }
+      .username {
+        font-weight: bold;
+        font-size: 0.85rem;
+        color: #555;
+        margin-bottom: 3px;
+      }
+      .time {
+        font-size: 0.75rem;
+        color: #888;
+        align-self: flex-end;
+        margin-top: 2px;
+      }
+      .config-area {
+        display: flex;
+        gap: 10px;
+        padding: 10px;
+        background: #f9f9f9;
+        border-bottom: 1px solid #ddd;
+        align-items: center;
+      }
+      .name-input {
+        padding: 5px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        width: 150px;
       }
       .form {
         display: flex;
@@ -31,119 +63,195 @@
         background: #eee;
         cursor: pointer;
       }
+      .reaction-area {
+        display: flex;
+        gap: 5px;
+        margin-top: 5px;
+      }
+      .reaction-btn {
+        padding: 2px 6px;
+        font-size: 0.8rem;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background: #fff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        transition: background 0.2s;
+      }
+      .reaction-btn:hover {
+        background: #f0f0f0;
+      }
+      /* ★ 追加：自分が押したリアクションの見た目（薄い青色にする） */
+      .reaction-btn.my-active {
+        background: #e0f0ff;
+        border-color: #a0c0ff;
+      }
     </style>
   </head>
   <body>
     <div class="chat">
+      <div class="config-area">
+        <label for="nickname">ニックネーム：</label>
+        <input id="nickname" class="name-input" value="名無しさん" placeholder="名前を入力..." autocomplete="off" />
+      </div>
+
       <ul class="messages"></ul>
+
       <form class="form">
-        <input class="input" autocomplete="off" />
+        <input class="input" autocomplete="off" placeholder="メッセージを入力..." />
         <button class="submit">Send</button>
       </form>
     </div>
-    <canvas
-      id="canvas"
-      width="600"
-      height="600"
-      style="border: solid 1px black"
-    ></canvas>
 
     <script>
       function main() {
         const host = location.origin.replace(/^http/, 'ws')
         const ws = new WebSocket(host + '/ws')
-        const myId = self.crypto.randomUUID().substr(0, 8)
+        const myId = self.crypto.randomUUID().substring(0, 8)
 
-        const canvas = document.getElementById('canvas')
-        const ctx = canvas.getContext('2d')
-
-        let drawing = false
-
-        canvas.addEventListener('mousedown', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mousedown')
-        })
-        function mousedown() {
-          drawing = true
-          ctx.beginPath()
-        }
-
-        canvas.addEventListener('mousemove', (e) => {
-          if (drawing) {
-            sendDrawingEvent(e.offsetX, e.offsetY, 'mousemove')
-          }
-        })
-        function mousemove(x, y) {
-          if (drawing) {
-            draw(x, y, true)
-          }
-        }
-
-        canvas.addEventListener('mouseup', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mouseup')
-        })
-        function mouseup() {
-          drawing = false
-          ctx.beginPath()
-        }
-
-        canvas.addEventListener('mouseout', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mouseout')
-        })
-        function mouseout() {
-          drawing = false
-        }
-
-        function draw(x, y, dragging) {
-          if (dragging) {
-            ctx.lineTo(x, y)
-            ctx.stroke()
-          } else {
-            ctx.moveTo(x, y)
-          }
-        }
-
-        function sendDrawingEvent(x, y, control) {
-          const message = JSON.stringify({ x, y, control, type: 'paint' })
-          ws.send(message)
-        }
-
-        ws.onmessage = (event) => {
-          const msg = JSON.parse(event.data)
-          if (msg.type === 'paint') {
-            const { x, y, control } = msg
-            console.log({ control })
-            if (control === 'mousedown') {
-              mousedown()
-            } else if (control === 'mouseup') {
-              mouseup()
-            } else if (control === 'mousemove') {
-              mousemove(x, y)
-            } else if (control === 'mouseout') {
-              mouseout()
-            }
-          }
-          if (msg.type === 'chat') {
-            const { id, text } = msg
-            const messageList = document.querySelector('.messages')
-            const li = document.createElement('li')
-            if (id === myId) {
-              li.textContent = `(${id})自分:` + text
-            } else {
-              li.textContent = id + ': ' + text
-            }
-            messageList.appendChild(li)
-          }
-        }
+        // ★自分が「どのメッセージ」に「どの絵文字」を押したかを記憶するノート
+        // 構造の例: { "msg-1234": { "👍": true, "❤️": false } }
+        const myReactions = {}
 
         const form = document.querySelector('.form')
+        const input = document.querySelector('.input')
+        const nameInput = document.querySelector('#nickname')
 
         form.onsubmit = function (e) {
           e.preventDefault()
-          const input = document.querySelector('.input')
           const text = input.value
-          ws.send(JSON.stringify({ id: myId, text, type: 'chat' }))
-          input.value = ''
-          input.focus()
+          
+          if (text.trim() !== '') {
+            const now = new Date()
+            const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0')
+            const nickname = nameInput.value.trim() || '名無しさん'
+            const msgId = self.crypto.randomUUID()
+
+            ws.send(JSON.stringify({ 
+              type: 'chat',
+              msgId: msgId,
+              id: myId, 
+              name: nickname, 
+              text: text, 
+              time: timeStr 
+            }))
+            
+            input.value = ''
+            input.focus()
+          }
+        }
+
+        // ★ 変更：リアクションボタンが押された時の処理（追加かキャンセルかを判定）
+        window.sendReaction = function(msgId, emoji) {
+          // このメッセージ用の記憶がノートになければ、新しく枠を作る
+          if (!myReactions[msgId]) {
+            myReactions[msgId] = {}
+          }
+
+          // すでに自分がその絵文字を押しているかチェック
+          const isAlreadyPressed = !!myReactions[msgId][emoji]
+
+          if (isAlreadyPressed) {
+            // 【キャンセル】すでに押されているので、自分のノートを「嘘（未入力）」にしてマイナス1を送信
+            myReactions[msgId][emoji] = false
+            ws.send(JSON.stringify({
+              type: 'reaction',
+              action: 'remove', // キャンセルだよという目印
+              msgId: msgId,
+              emoji: emoji
+            }))
+          } else {
+            // 【新規追加】まだ押していないので、自分のノートを「本当（入力済）」にしてプラス1を送信
+            myReactions[msgId][emoji] = true
+            ws.send(JSON.stringify({
+              type: 'reaction',
+              action: 'add', // 新規追加だよという目印
+              msgId: msgId,
+              emoji: emoji
+            }))
+          }
+        }
+
+        // 受信処理
+        ws.onmessage = function (msg) {
+          const data = JSON.parse(msg.data)
+
+          if (data.type === 'chat') {
+            const { msgId, id, name, text, time } = data
+            const messageList = document.querySelector('.messages')
+            const li = document.createElement('li')
+            
+            li.setAttribute('data-msg-id', msgId)
+            
+            const nameSpan = document.createElement('span')
+            nameSpan.className = 'username'
+            const textSpan = document.createElement('span')
+            
+            if (id === myId) {
+              nameSpan.textContent = name + ' (自分)'
+              li.style.background = "#e1ffc7"
+            } else {
+              nameSpan.textContent = name
+            }
+            textSpan.textContent = text
+            
+            const timeSpan = document.createElement('span')
+            timeSpan.className = 'time'
+            timeSpan.textContent = time || ''
+
+            const reactionArea = document.createElement('div')
+            reactionArea.className = 'reaction-area'
+            
+            const emojis = ['👍', '❤️', '😆']
+            emojis.forEach(emoji => {
+              const btn = document.createElement('button')
+              btn.className = 'reaction-btn'
+              btn.setAttribute('data-emoji', emoji)
+              btn.innerHTML = `${emoji} <span class="count">0</span>`
+              btn.onclick = () => sendReaction(msgId, emoji)
+              reactionArea.appendChild(btn)
+            })
+
+            li.appendChild(nameSpan)
+            li.appendChild(textSpan)
+            li.appendChild(reactionArea)
+            li.appendChild(timeSpan)
+            
+            messageList.appendChild(li)
+            messageList.scrollTop = messageList.scrollHeight
+          } 
+          
+          // ★ 変更：リアクションデータが届いた時の処理
+          else if (data.type === 'reaction') {
+            const { msgId, emoji, action } = data
+            
+            const targetLi = document.querySelector(`li[data-msg-id="${msgId}"]`)
+            if (targetLi) {
+              const targetBtn = targetLi.querySelector(`button[data-emoji="${emoji}"]`)
+              if (targetBtn) {
+                const countSpan = targetBtn.querySelector('.count')
+                let currentCount = parseInt(countSpan.textContent)
+                
+                // action が 'add' なら +1、そうでなければ -1 する
+                if (action === 'add') {
+                  countSpan.textContent = currentCount + 1
+                } else if (action === 'remove') {
+                  // 0未満にはならないように安全ブレーキ
+                  countSpan.textContent = Math.max(0, currentCount - 1)
+                }
+
+                // ★ もしリアクションしたのが自分だったら、ボタンの見た目（色）を変える
+                //（手元のノートに登録があるかで、自分が押したか判断する）
+                if (myReactions[msgId] && myReactions[msgId][emoji]) {
+                  targetBtn.classList.add('my-active') // 色をつけるクラスを追加
+                } else {
+                  targetBtn.classList.remove('my-active') // 色を消す
+                }
+              }
+            }
+          }
         }
 
         ws.onerror = function (error) {
