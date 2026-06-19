@@ -90,6 +90,22 @@
       msgInput.focus();
     }
 
+    // ★ 追加：リアクションをサーバーに送る関数
+    window.sendReaction = function (msgId, emoji) {
+      console.log(`リアクションボタンが押されました: メッセージID=${msgId}, 絵文字=${emoji}`);
+      
+      if (!myReactions[msgId]) myReactions[msgId] = {};
+      const isAlreadyPressed = !!myReactions[msgId][emoji];
+
+      if (isAlreadyPressed) {
+        myReactions[msgId][emoji] = false;
+        ws.send(JSON.stringify({ type: 'reaction', action: 'remove', msgId: msgId, userId: myId, emoji: emoji }));
+      } else {
+        myReactions[msgId][emoji] = true;
+        ws.send(JSON.stringify({ type: 'reaction', action: 'add', msgId: msgId, userId: myId, emoji: emoji }));
+      }
+    };
+
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') sendMessage();
