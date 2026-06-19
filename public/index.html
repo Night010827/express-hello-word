@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="ja">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,7 +10,6 @@
       flex-direction: column;
       height: 100vh;
     }
-
     .messages {
       flex: 1;
       overflow-y: auto;
@@ -19,125 +17,46 @@
       padding: 0;
       margin: 0;
     }
-
     .messages li {
-      padding: 10px 15px;
-      border-bottom: 1px solid #eee;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .username {
-      font-weight: bold;
-      font-size: 0.85rem;
-      color: #555;
-      margin-bottom: 3px;
-    }
-
-    .time {
-      font-size: 0.75rem;
-      color: #888;
-      align-self: flex-end;
-      margin-top: 2px;
-    }
-
-    .config-area {
-      display: flex;
-      gap: 10px;
-      padding: 10px;
-      background: #f9f9f9;
-      border-bottom: 1px solid #ddd;
-      align-items: center;
-    }
-
-    .name-input {
-      padding: 5px 10px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      width: 150px;
-    }
-
-    .form {
-      display: flex;
-    }
-
-    .input {
-      flex: 1;
-      padding: 10px;
-      border: 1px solid #ccc;
-    }
-
-    .submit {
-      padding: 10px;
-      border: 1px solid #ccc;
-      background: #eee;
-      cursor: pointer;
-    }
-
-    .reaction-area {
-      display: flex;
-      gap: 5px;
-      margin-top: 5px;
-    }
-
-    .reaction-btn {
-      padding: 2px 6px;
-      font-size: 0.8rem;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      background: #fff;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-      transition: background 0.2s;
-    }
-
-    .reaction-btn:hover {
-      background: #f0f0f0;
-    }
-
-    /* ★ 追加：自分が押したリアクションの見た目（薄い青色にする） */
-    .reaction-btn.my-active {
-      background: #e0f0ff;
-      border-color: #a0c0ff;
-    }
-  </style>
-</head>
-
+      padding: 10px 15px;      border-bottom: 1px solid #eee;      display: flex;      flex-direction: column;    }
+    .username {      font-weight: bold;      font-size: 0.85rem;      color: #555;      margin-bottom: 3px;    }
+    .time {      font-size: 0.75rem;      color: #888;      align-self: flex-end;      margin-top: 2px;    }
+    .config-area {      display: flex;      gap: 10px;      padding: 10px;      background: #f9f9f9;      border-bottom: 1px solid #ddd;      align-items: center;    }
+    .name-input {      padding: 5px 10px;      border: 1px solid #ccc;      border-radius: 4px;      width: 150px;    }
+    .form {      display: flex;    }
+    .input {      flex: 1;      padding: 10px;      border: 1px solid #ccc;    }
+    .submit {      padding: 10px;      border: 1px solid #ccc;      background: #eee;      cursor: pointer;    }
+    .reaction-area {      display: flex;      gap: 5px;      margin-top: 5px;    }
+    .reaction-btn {      padding: 2px 6px;      font-size: 0.8rem;      border: 1px solid #ddd;      border-radius: 10px;      background: #fff;      cursor: pointer;      display: flex;      align-items: center;      gap: 3px;      transition: background 0.2s;    }
+    .reaction-btn:hover {      background: #f0f0f0;    }
+    .reaction-btn.my-active {      background: #e0f0ff;      border-color: #a0c0ff;    }  </style></head>
 <body>
   <div class="chat">
     <div class="config-area">
       <label for="nickname">ニックネーム：</label>
       <input id="nickname" class="name-input" value="名無しさん" placeholder="名前を入力..." autocomplete="off" />
     </div>
-
     <ul class="messages"></ul>
-
     <form class="form">
       <input class="input" autocomplete="off" placeholder="メッセージを入力..." />
       <button class="submit">Send</button>
     </form>
   </div>
-
   <script>
     function main() {
-      const host = location.origin.replace(/^http/, 'ws')
+      // ➔ 修正：Render環境（https）でも絶対に迷子にならないよう wss に対応させる
+      const host = location.origin.replace(/^http/, 'ws').replace(/^https/, 'wss')
       const ws = new WebSocket(host + '/ws')
-      const myId = self.crypto.randomUUID().substring(0, 8)
+      
+      // ➔ 修正：セキュリティエラーを絶対に起こさない安全なID生成
+      const myId = Math.random().toString(36).substring(2, 10)
 
-      // ★自分が「どのメッセージ」に「どの絵文字」を押したかを記憶するノート
-      // 構造の例: { "msg-1234": { "👍": true, "❤️": false } }
       const myReactions = {}
-
       const form = document.querySelector('.form')
-      const input = document.querySelector('.input')
-      const nameInput = document.querySelector('#nickname')
 
       form.onsubmit = function (e) {
         e.preventDefault()
 
-        // ★ 修正：ボタンが押された瞬間の入力欄を確実に指定する
         const currentInput = document.querySelector('.input')
         const currentNameInput = document.querySelector('#nickname')
         const text = currentInput.value
@@ -146,7 +65,9 @@
           const now = new Date()
           const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0')
           const nickname = currentNameInput.value.trim() || '名無しさん'
-          const msgId = self.crypto.randomUUID()
+          
+          // ➔ 修正：ここも暗号化エラーを回避するため安全なID生成に変更
+          const msgId = 'msg-' + Math.random().toString(36).substring(2, 15)
 
           ws.send(JSON.stringify({
             type: 'chat',
@@ -162,38 +83,32 @@
         }
       }
 
-      // ★ 変更：リアクションボタンが押された時の処理（追加かキャンセルかを判定）
       window.sendReaction = function (msgId, emoji) {
-        // このメッセージ用の記憶がノートになければ、新しく枠を作る
         if (!myReactions[msgId]) {
           myReactions[msgId] = {}
         }
 
-        // すでに自分がその絵文字を押しているかチェック
         const isAlreadyPressed = !!myReactions[msgId][emoji]
 
         if (isAlreadyPressed) {
-          // 【キャンセル】すでに押されているので、自分のノートを「嘘（未入力）」にしてマイナス1を送信
           myReactions[msgId][emoji] = false
           ws.send(JSON.stringify({
             type: 'reaction',
-            action: 'remove', // キャンセルだよという目印
+            action: 'remove',
             msgId: msgId,
             emoji: emoji
           }))
         } else {
-          // 【新規追加】まだ押していないので、自分のノートを「本当（入力済）」にしてプラス1を送信
           myReactions[msgId][emoji] = true
           ws.send(JSON.stringify({
             type: 'reaction',
-            action: 'add', // 新規追加だよという目印
+            action: 'add',
             msgId: msgId,
             emoji: emoji
           }))
         }
       }
 
-      // 受信処理
       ws.onmessage = function (msg) {
         const data = JSON.parse(msg.data)
 
@@ -203,7 +118,6 @@
           const li = document.createElement('li')
 
           li.setAttribute('data-msg-id', msgId)
-
           const nameSpan = document.createElement('span')
           nameSpan.className = 'username'
           const textSpan = document.createElement('span')
@@ -241,8 +155,6 @@
           messageList.appendChild(li)
           messageList.scrollTop = messageList.scrollHeight
         }
-
-        // ★ 変更：リアクションデータが届いた時の処理
         else if (data.type === 'reaction') {
           const { msgId, emoji, action } = data
 
@@ -253,20 +165,16 @@
               const countSpan = targetBtn.querySelector('.count')
               let currentCount = parseInt(countSpan.textContent)
 
-              // action が 'add' なら +1、そうでなければ -1 する
               if (action === 'add') {
                 countSpan.textContent = currentCount + 1
               } else if (action === 'remove') {
-                // 0未満にはならないように安全ブレーキ
                 countSpan.textContent = Math.max(0, currentCount - 1)
               }
 
-              // ★ もしリアクションしたのが自分だったら、ボタンの見た目（色）を変える
-              //（手元のノートに登録があるかで、自分が押したか判断する）
               if (myReactions[msgId] && myReactions[msgId][emoji]) {
-                targetBtn.classList.add('my-active') // 色をつけるクラスを追加
+                targetBtn.classList.add('my-active')
               } else {
-                targetBtn.classList.remove('my-active') // 色を消す
+                targetBtn.classList.remove('my-active')
               }
             }
           }
@@ -281,5 +189,4 @@
     main()
   </script>
 </body>
-
 </html>
