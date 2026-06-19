@@ -6,7 +6,7 @@ import path from 'path'
 const app = express()
 expressWs(app)
 
-// 404エラーを防ぐため、絶対パスで public フォルダを指定する設定
+// ➔ 修正：Render上での404エラーを完全に防ぐための絶対パス設定
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 app.use(express.static(path.join(__dirname, 'public')))
