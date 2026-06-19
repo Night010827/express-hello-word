@@ -23,7 +23,7 @@
 <body>
   <div class="chat">
     <div class="config-area">
-      <label for="nickname">ニックネニックネーム：</label>
+      <label for="nickname">ニックネーム：</label>
       <input id="nickname" class="name-input" value="名無しさん" autocomplete="off" />
     </div>
     <ul class="messages" id="message-list"></ul>
@@ -34,11 +34,9 @@
   </div>
 
   <script>
-    // テスト用に確実にローカルサーバーへ接続する設定
-// 【修正】現在の画面のURL（location.origin）から、ws:// または wss:// のURLを自動生成する
+    // 環境（Render or Local）に合わせてURLを自動判別
     const host = location.origin.replace(/^http/, 'ws').replace(/^https/, 'wss');
     const ws = new WebSocket(host + '/ws');
-    
     const myId = Math.random().toString(36).substring(2, 10);
     const myReactions = {};
 
@@ -47,83 +45,64 @@
     const nicknameInput = document.getElementById('nickname');
     const messageList = document.getElementById('message-list');
 
-    // 接続状態の確認ログ
-    ws.onopen = function() {
-      console.log("［接続成功］サーバーとWebSocketで繋がりました！");
-    };
-    ws.onerror = function(error) {
-      console.error("［接続エラー］WebSocketで問題が発生しました:", error);
-    };
-    ws.onclose = function() {
-      console.warn("［接続切断］サーバーとの接続が切れました。");
-    };
+    ws.onopen = () => console.log("［接続成功］WebSocket接続完了");
+    ws.onerror = (err) => console.error("［接続エラー］", err);
+    ws.onclose = () => console.warn("［接続切断］サーバーから切断されました");
 
     function sendMessage() {
-      console.log("(1) Sendボタンが押されました");
       const text = msgInput.value;
-      
-      if (text.trim() === '') {
-        console.warn("(警告) 入力欄が空っぽなので送信をスキップしました");
-        return;
+      if (text.trim() !== '') {
+        const now = new Date();
+        const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        const nickname = nicknameInput.value.trim() || '名無しさん';
+        const msgId = 'msg-' + Math.random().toString(36).substring(2, 15);
+
+        ws.send(JSON.stringify({
+          type: 'chat',
+          msgId: msgId,
+          id: myId,
+          name: nickname,
+          text: text,
+          time: timeStr
+        }));
+
+        msgInput.value = '';
+        msgInput.focus();
       }
-
-      const now = new Date();
-      const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-      const nickname = nicknameInput.value.trim() || '名無しさん';
-      const msgId = 'msg-' + Math.random().toString(36).substring(2, 15);
-
-      const payload = {
-        type: 'chat',
-        msgId: msgId,
-        id: myId,
-        name: nickname,
-        text: text,
-        time: timeStr
-      };
-
-      console.log("(2) 以下のデータをサーバーへ送信します:", payload);
-      
-      // データを送信
-      ws.send(JSON.stringify(payload));
-
-      msgInput.value = '';
-      msgInput.focus();
     }
-
-    // ★ 追加：リアクションをサーバーに送る関数
-    window.sendReaction = function (msgId, emoji) {
-      console.log(`リアクションボタンが押されました: メッセージID=${msgId}, 絵文字=${emoji}`);
-      
-      if (!myReactions[msgId]) myReactions[msgId] = {};
-      const isAlreadyPressed = !!myReactions[msgId][emoji];
-
-      if (isAlreadyPressed) {
-        myReactions[msgId][emoji] = false;
-        ws.send(JSON.stringify({ type: 'reaction', action: 'remove', msgId: msgId, userId: myId, emoji: emoji }));
-      } else {
-        myReactions[msgId][emoji] = true;
-        ws.send(JSON.stringify({ type: 'reaction', action: 'add', msgId: msgId, userId: myId, emoji: emoji }));
-      }
-    };
 
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') sendMessage();
     });
 
+    // リアクション送信（一人1つ、トグル処理）
+    window.sendReaction = function (msgId, emoji) {
+      if (!myReactions[msgId]) myReactions[msgId] = {};
+      const isAlreadyPressed = !!myReactions[msgId][emoji];
+
+      if (isAlreadyPressed) {
+        // すでに押されているなら、自分の記録を消してサーバーに「削除」命令
+        myReactions[msgId][emoji] = false;
+        ws.send(JSON.stringify({ type: 'reaction', action: 'remove', msgId: msgId, userId: myId, emoji: emoji }));
+      } else {
+        // まだ押されていないなら、自分の記録をつけてサーバーに「追加」命令
+        myReactions[msgId][emoji] = true;
+        ws.send(JSON.stringify({ type: 'reaction', action: 'add', msgId: msgId, userId: myId, emoji: emoji }));
+      }
+    };
+
     ws.onmessage = function (msg) {
-      console.log("(3) サーバーからメッセージが戻ってきました！:", msg.data);
       try {
         const data = JSON.parse(msg.data);
 
+        // チャット表示処理
         if (data.type === 'chat') {
           const { msgId, id, name, text, time } = data;
           const li = document.createElement('li');
           li.setAttribute('data-msg-id', msgId);
 
-          if (id === myId) {
-            li.style.background = "#e1ffc7";
-          }
+          if (id === myId) li.style.background = "#e1ffc7";
 
           li.innerHTML = `
             <span class="username">${name}${id === myId ? ' (自分)' : ''}</span>
@@ -138,10 +117,25 @@
 
           messageList.appendChild(li);
           messageList.scrollTop = messageList.scrollHeight;
-          console.log("(4) 画面へのメッセージ追加が完了しました");
+        }
+        // ★修正：リアクションのカウント更新処理を確実に反映
+        else if (data.type === 'reaction') {
+          const { msgId, emoji, userId, count } = data;
+          const targetLi = document.querySelector(`li[data-msg-id="${msgId}"]`);
+          if (targetLi) {
+            const targetBtn = targetLi.querySelector(`button[data-emoji="${emoji}"]`);
+            if (targetBtn) {
+              // サーバーから返ってきた最新カウント数を画面に反映
+              targetBtn.querySelector('.count').textContent = count;
+              // 自分が押したスタンプなら、色を変更（トグルスタイル）
+              if (userId === myId) {
+                targetBtn.classList.toggle('my-active', !!myReactions[msgId][emoji]);
+              }
+            }
+          }
         }
       } catch (e) {
-        console.error("データ解析エラー:", e);
+        console.error("受信データ解析エラー:", e);
       }
     };
   </script>
