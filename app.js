@@ -1,17 +1,22 @@
 import express from 'express'
 import expressWs from 'express-ws'
+import { fileURLToPath } from 'url'
+import path from 'path'
 
 const app = express()
 expressWs(app)
 
-app.use(express.static('public'))
+// 404エラーを防ぐため、絶対パスで public フォルダを指定する設定
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+app.use(express.static(path.join(__dirname, 'public')))
 
 // 誰かが接続したときの処理
 app.ws('/ws', (ws, req) => {
   console.log('Client connected')
 
   ws.on('message', (msg) => {
-    // ★重要：届いたデータを「接続している全員」に転送する処理
+    // 届いたデータを「接続している全員」に転送する処理
     const aWss = expressWs(app).getWss('/ws')
     aWss.clients.forEach((client) => {
       if (client.readyState === 1) {
