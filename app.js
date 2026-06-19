@@ -11,8 +11,7 @@ app.ws('/ws', (ws, req) => {
   console.log('Client connected')
 
   ws.on('message', (msg) => {
-    // 届いたデータを一度そのまま全員に転送する
-    // （文字送信も、リアクション送信も、すべてこのルートを通ります）
+    // ★重要：届いたデータを「接続している全員」に転送する処理
     const aWss = expressWs(app).getWss('/ws')
     aWss.clients.forEach((client) => {
       if (client.readyState === 1) {
@@ -26,7 +25,7 @@ app.ws('/ws', (ws, req) => {
   })
 })
 
-const port = process.env.PORT || 3001
+const port = process.env.PORT || 10000 // Renderのポートに対応
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`)
 })
